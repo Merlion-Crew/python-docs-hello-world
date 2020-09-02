@@ -7,11 +7,14 @@ pipeline {
             }
             post {
                 always {
-                    deleteDir() /* clean up our workspace */
+                    cleanWs() /* clean up our workspace */
                 }
             }
         }
         stage('build') {
+            environment {
+                PIP_INDEX_URL = credentials('nexus-pip-url')
+            }
             steps {
                 echo 'Hello build stage!'
                 echo "Hello build ${env.BUILD_ID}"
@@ -19,7 +22,7 @@ pipeline {
 
                 withPythonEnv('python3') {
                     sh """
-                        pip3 install -r requirements.txt
+                        pip3 install --trusted-host ${NEXUS_SERVER} --index-url ${PIP_INDEX_URL} -r requirements.txt
                     """
                 }
             }
@@ -58,8 +61,20 @@ pipeline {
             }
         }
         stage('packaging') {
+            environment {
+                PIP_REPOSITORY_URL = credentials('nexus-repository-url')
+                NEXUS_USER = credentials('jenkins-nexus-user')
+            }
             steps {
                 echo 'Packaging!'
+                
+                withPythonEnv('python3') {
+                    sh """
+                        python setup.py bdist_wheel
+                        twine upload -u $NEXUS_USER_USR -p $NEXUS_USER_PSW --repository-url ${PIP_REPOSITORY_URL} dist/*
+                    """
+                }
+                
                 sh "zip -r deployment-${BUILD_NUMBER}.zip ."
             }
         }
